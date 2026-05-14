@@ -20,16 +20,15 @@ def find_imx415():
     return None
 
 # --- Paste your calibrated values here (run calibrationWindows.py first) ---
-lower = np.array([0, 0, 0])
-upper = np.array([179, 255, 255])
+lower = np.array([2, 170, 215])
+upper = np.array([12, 255, 255])
 # ---------------------------------------------------------------------------
 
-MIN_AREA = 400
+MIN_AREA = 100
 kernel   = np.ones((5, 5), np.uint8)
 
-index = find_imx415()
-if index is None:
-    exit()
+index = 1
+
 
 cap = cv2.VideoCapture(index, cv2.CAP_MSMF)
 cap.set(cv2.CAP_PROP_FOURCC,       cv2.VideoWriter_fourcc(*'MJPG'))

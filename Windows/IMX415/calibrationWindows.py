@@ -21,15 +21,13 @@ def find_imx415():
 def nothing(x):
     pass
 
-index = find_imx415()
-if index is None:
-    exit()
+index = 1
 
 cap = cv2.VideoCapture(index, cv2.CAP_MSMF)
 cap.set(cv2.CAP_PROP_FOURCC,       cv2.VideoWriter_fourcc(*'MJPG'))
-cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1920)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
-cap.set(cv2.CAP_PROP_FPS,          60)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH,  3840)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 2160)
+cap.set(cv2.CAP_PROP_FPS,          70)
 
 # grab one frame first before creating windows — fixes Windows timing issue
 cap.read()
