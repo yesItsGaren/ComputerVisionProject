@@ -1,0 +1,6 @@
+measurement,value_deg,target_lo,target_hi,verdict
+Knee Extension,35.0,32,38,OK
+Hip Open,104.7,96,104,HIGH
+Back Angle,49.4,37,43,HIGH
+Shoulder Angle,60.6,86,93,LOW
+Arm Angle,147.6,145,175,OK

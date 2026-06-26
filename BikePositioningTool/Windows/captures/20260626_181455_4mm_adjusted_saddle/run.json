@@ -1,0 +1,37 @@
+{
+  "session": "20260626_181455",
+  "datetime": "2026-06-26T18:15:31",
+  "name": "4mm adjusted saddle",
+  "note": "felt better but not quite there",
+  "side": "right",
+  "bike": "Canyon Ultimate CF",
+  "angles": {
+    "knee_ext": 15.5,
+    "hip_open": 111.8,
+    "back": 41.3,
+    "shoulder": 58.4,
+    "arm": 130.9
+  },
+  "targets": {
+    "knee_ext": [
+      32,
+      38
+    ],
+    "hip_open": [
+      96,
+      104
+    ],
+    "back": [
+      37,
+      43
+    ],
+    "shoulder": [
+      86,
+      93
+    ],
+    "arm": [
+      145,
+      175
+    ]
+  }
+}

@@ -1,0 +1,113 @@
+Let me read the current file in full so I walk you through the actual code, not my memory of it.
+
+I have the full picture of this file from our work, but let me confirm the exact structure and line numbers so the walkthrough is precise.
+
+Here's the full walkthrough of [BikePositionCV.py](BikePositioningTool/Windows/BikePositionCV.py). It's one file (~990 lines) organized into clearly-separated sections. I'll go top-to-bottom, then explain how data flows end-to-end.
+
+## The big picture
+
+It's a **markerless 2D bike-fit tool**. Each video frame goes through one pipeline:
+
+```
+camera frame → MediaPipe Pose → 2D joint coordinates → 5 fit angles
+   → (while recording) sample one value per pedal stroke
+   → aggregate to mean/median/std → save run + report → analyze across runs
+```
+
+Everything else (voice, GUI hooks, dashboard) is plumbing around that core.
+
+---
+
+## 1. Setup constants — what we measure
+
+[BikePositionCV.py:112](BikePositioningTool/Windows/BikePositionCV.py:112) — `L` and `R` map body-part names to **MediaPipe Pose landmark indices** (MediaPipe outputs 33 numbered points; e.g. right knee = 26). You pick `--side` and the code uses that side's six joints (shoulder, elbow, wrist, hip, knee, ankle).
+
+[BikePositionCV.py:117](BikePositioningTool/Windows/BikePositionCV.py:117) — `METRICS` is the single source of truth for the five angles. Each entry is `(key, label, lo, hi, what_it_tunes)`, e.g. `("knee_ext", "Knee Extension", 32, 38, "Saddle height")`. Almost everything (panel, report, CSV, dashboard) loops over `METRICS`, so changing a target range here updates the whole app.
+
+---
+
+## 2. The geometry — turning points into angles
+
+This is the mathematical heart, and it's tiny:
+
+- [`angle_3pt(a, b, c)`](BikePositioningTool/Windows/BikePositionCV.py:138) — the interior angle at joint `b`, via the dot-product formula `cos θ = (v1·v2)/(|v1||v2|)`. Used for knee/hip/shoulder/arm.
+- [`angle_to_horizontal(a, b)`](BikePositioningTool/Windows/BikePositionCV.py:146) — angle of a line vs horizontal, using `atan2`. Used for back angle (hip→shoulder vs the floor).
+- [`px(...)`](BikePositioningTool/Windows/BikePositionCV.py:152) — MediaPipe returns normalized 0–1 coordinates; this scales them to pixels.
+- [`compute_angles(p)`](BikePositioningTool/Windows/BikePositionCV.py:157) — the key function. Given a getter `p("knee")`, it returns all five angles in a dict. Note `knee_ext = 180 − interior_knee_angle` (how *bent* the knee is at the bottom), and it stashes `_knee_interior` for internal use.
+- [`metric_stats(values)`](BikePositioningTool/Windows/BikePositionCV.py:172) — takes a list of per-stroke samples and returns `{n, mean, median, std, min, max, cv}`. This is what makes the output "scientific."
+
+---
+
+## 3. Camera handling (IMX415-specific)
+
+- [`find_imx415()`](BikePositioningTool/Windows/BikePositionCV.py:193) — probes camera indices 0–3, sets them to 3840×2160, and returns the one that actually reports 4K (that's your IMX415).
+- [`open_camera(...)`](BikePositioningTool/Windows/BikePositionCV.py:211) — opens with the Windows-specific recipe from your other scripts: `CAP_MSMF` backend, MJPG codec, `BUFFERSIZE=1`, and a throwaway `cap.read()` to prime it (fixes the MSMF timing quirk). If `source` is a file path instead of an int, it just opens the file.
+
+---
+
+## 4. The on-screen UI (OpenCV drawing)
+
+- [`gauge_color`](BikePositioningTool/Windows/BikePositionCV.py:229) — green if in range, orange/red if off.
+- [`draw_gauge`](BikePositioningTool/Windows/BikePositionCV.py:241) — draws the red-yellow-green gradient bar with a white tick at your value (the "Recommended Ranges" look from your screenshot).
+- [`render_panel(...)`](BikePositioningTool/Windows/BikePositionCV.py:268) — builds the dark side panel: title, REC/PAUSED status + **stroke count**, then one row per metric (label, value, gauge). When recording, the values shown are the **running median** across strokes.
+- [`draw_skeleton`](BikePositioningTool/Windows/BikePositionCV.py:315) — overlays MediaPipe's stick figure on the video.
+
+---
+
+## 5. The fit report
+
+- `LOW_HINTS` / `HIGH_HINTS` (just above [build_report](BikePositioningTool/Windows/BikePositionCV.py:341)) — the adjustment advice per metric (the ones I fixed when your knee advice was inverted).
+- [`build_report(angles, stats)`](BikePositioningTool/Windows/BikePositionCV.py:341) — produces the text report lines: each angle's median, its LOW/OK/HIGH verdict, the stats line (`mean … sd … CV … n …`), and the hint.
+- [`fit_report(...)`](BikePositioningTool/Windows/BikePositionCV.py:384) — prints that to console, writes `report.txt`, and writes `report.csv` with the stats columns.
+
+---
+
+## 6. Voice control (offline)
+
+- [`class Speaker`](BikePositioningTool/Windows/BikePositionCV.py:424) — text-to-speech on a **background thread** (a queue + worker, so speaking never freezes the video). It prefers **Piper** (natural neural voice), falls back to Windows SAPI (`pyttsx3`), then silent.
+- [`resolve_piper_model`](BikePositioningTool/Windows/BikePositionCV.py:495) / [`resolve_vosk_model`](BikePositioningTool/Windows/BikePositionCV.py:514) — locate the offline models, **auto-downloading** them on first use.
+- [`start_voice_listener(cmd_queue, ...)`](BikePositioningTool/Windows/BikePositionCV.py:537) — spawns a thread running **Vosk** on the mic with a *restricted grammar* (only your command words). When it hears "start"/"stop", it pushes `"start"`/`"stop"` onto `cmd_queue`, which the main loop drains. Threads + a queue is the clean way to bridge async audio into the frame loop.
+
+---
+
+## 7. Storage & analysis
+
+- [`slugify`](BikePositioningTool/Windows/BikePositionCV.py:578) — turns a run name into a safe folder name.
+- [`write_run_json(...)`](BikePositioningTool/Windows/BikePositionCV.py:584) — writes the structured `run.json` (angles, stats, targets, name, note, n_strokes) — the machine-readable record that powers comparison.
+- [`_run_from_csv`](BikePositioningTool/Windows/BikePositionCV.py:605) + [`load_runs`](BikePositioningTool/Windows/BikePositionCV.py:633) — scan `captures/`, loading each run from its `run.json`, **falling back to parsing `report.csv`** for legacy folders (your existing runs).
+- [`_band_dist`](BikePositioningTool/Windows/BikePositionCV.py:659) / [`_verdict`](BikePositioningTool/Windows/BikePositionCV.py:670) — helpers for "how far from target" and the color verdict.
+- [`make_trend_png(runs)`](BikePositioningTool/Windows/BikePositionCV.py:681) — matplotlib charts (one per angle, target band shaded, **±1 SD error bars**), returned as a base64 PNG.
+- [`build_dashboard_html(...)`](BikePositioningTool/Windows/BikePositionCV.py:723) — assembles the dark HTML page: the runs table (color-coded cells, ±SD, deltas vs previous run, hover tooltips) plus the embedded chart.
+- [`run_analysis(outdir)`](BikePositioningTool/Windows/BikePositionCV.py:802) — ties it together: load runs → build HTML → write `analysis.html` → open in browser. This is what `--analyze` calls.
+
+---
+
+## 8. `main()` — orchestration + the live loop
+
+[`main()`](BikePositioningTool/Windows/BikePositionCV.py:819) does:
+
+**a. Args & early exits** — parses all the flags; `--list-mics` and `--analyze` handle their job and `return` immediately (no camera needed).
+
+**b. Setup** — resolves the camera source, creates the timestamped run folder, sets up the Speaker + Vosk listener if `--voice`.
+
+**c. Two nested helpers** — [`begin_recording()`](BikePositioningTool/Windows/BikePositionCV.py:934) and [`end_recording()`](BikePositioningTool/Windows/BikePositionCV.py:960). These hold the recording state (using `nonlocal`), open/close the `VideoWriter`, reset the per-stroke buffers, and speak the confirmation. Both SPACE and voice route through the *same* two functions, so behavior is identical.
+
+**d. The frame loop** (the engine) — each iteration:
+1. Read a frame, run `pose.process()`.
+2. `compute_angles()` for the live values.
+3. **Pedal-stroke detection** (while recording): it watches the ankle's vertical position. The bottom of a stroke = ankle at its lowest (max pixel-y). It tracks the running max (`peak_y`), and once the foot rises back up by ~4% of frame height (hysteresis to avoid double-counting), it records that bottom frame's angles as **one stroke sample**, then recomputes the running median.
+4. Draw skeleton + angle labels; save a representative bottom-of-stroke frame for the `.jpg`.
+5. Compose video + panel, `imshow`, and write to the video file if recording.
+6. Drain `cmd_queue` (voice commands) and handle keys (SPACE/R/Q).
+
+**e. On quit** — aggregates the per-stroke samples via `metric_stats`, picks the **median** as each headline value (or falls back to the single deepest frame if you stopped before a full stroke), saves the snapshot/report, prompts for name+note, writes `run.json`, and renames the folder.
+
+---
+
+## Why it's structured this way
+
+- **`METRICS`-driven** — add or retune an angle in one place.
+- **Pure functions for math/IO, threads for async** (voice/TTS) so the frame loop stays simple and never stalls.
+- **Subprocess-friendly** — the GUI launches this same script with flags, and `--analyze` is a self-contained mode, so the GUI never has to import the heavy CV stack.
+
+Want me to go deeper on any one part — the angle math, the stroke-detection state machine, or the MediaPipe pose step specifically?

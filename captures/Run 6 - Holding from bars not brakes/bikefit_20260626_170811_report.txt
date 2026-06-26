@@ -1,0 +1,14 @@
+============================================================
+ BIKE FIT REPORT - Canyon Ultimate CF (bottom of pedal stroke)
+============================================================
+  Knee Extension :   35.0deg   target 32-38   [OK  ] -> Saddle height
+  Hip Open       :  104.7deg   target 96-104   [HIGH] -> Saddle fore/aft + reach
+      | hip very open / upright -> can drop bars or lengthen reach
+  Back Angle     :   49.4deg   target 37-43   [HIGH] -> Reach / bar drop
+      | back quite upright -> can drop bars (-spacers / lower stem)
+  Shoulder Angle :   60.6deg   target 86-93   [LOW ] -> Reach
+      | shoulder closed / not reaching enough -> lengthen or lower reach
+  Arm Angle      :  147.6deg   target 145-175   [OK  ] -> Reach / arm comfort
+============================================================
+  Saddle TILT can't be read side-on - set near level, tune by feel.
+  Change ONE thing at a time, then re-measure.

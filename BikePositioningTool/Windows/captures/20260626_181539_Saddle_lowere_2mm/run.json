@@ -1,0 +1,37 @@
+{
+  "session": "20260626_181539",
+  "datetime": "2026-06-26T18:16:13",
+  "name": "Saddle lowere 2mm",
+  "note": "felt best",
+  "side": "right",
+  "bike": "Canyon Ultimate CF",
+  "angles": {
+    "knee_ext": 14.9,
+    "hip_open": 104.0,
+    "back": 34.6,
+    "shoulder": 72.0,
+    "arm": 162.0
+  },
+  "targets": {
+    "knee_ext": [
+      32,
+      38
+    ],
+    "hip_open": [
+      96,
+      104
+    ],
+    "back": [
+      37,
+      43
+    ],
+    "shoulder": [
+      86,
+      93
+    ],
+    "arm": [
+      145,
+      175
+    ]
+  }
+}

@@ -6,7 +6,8 @@
 ._*
 
 # Custom folder icons
-Icon
+Icon
+
 
 # Volume root files
 .DocumentRevisions-V100
@@ -53,6 +54,8 @@ htmlcov/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+
+/.claude
 
 # pyenv
 # .python-version
