@@ -98,6 +98,7 @@ import json
 import os
 import queue
 import threading
+import urllib.parse
 import webbrowser
 from datetime import datetime
 
@@ -221,6 +222,24 @@ def open_camera(source, width, height):
     else:
         cap = cv2.VideoCapture(source)
     return cap
+
+
+def open_video_writer(path, fps, size):
+    """Return a VideoWriter that produces BROWSER-PLAYABLE H.264 .mp4 via the
+    Windows Media Foundation (MSMF) backend. OpenCV's bundled FFmpeg can't encode
+    H.264 (no openh264/libx264), and its 'mp4v' codec won't play in browsers, so
+    MSMF+H264 is the reliable path. Falls back to mp4v only if MF is unavailable.
+    Note: H.264 needs even width/height."""
+    try:
+        w = cv2.VideoWriter(path, cv2.CAP_MSMF,
+                            cv2.VideoWriter_fourcc(*"H264"), fps, size)
+        if w.isOpened():
+            return w
+        w.release()
+    except Exception:
+        pass
+    print("  (H.264/MSMF unavailable - clip saved as mp4v, may not play in browser)")
+    return cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*"mp4v"), fps, size)
 
 
 # --------------------------------------------------------------------------- #
@@ -687,31 +706,38 @@ def make_trend_png(runs):
     except Exception:
         return None
     labels = [r.get("name") or (r.get("datetime") or "")[:16] for r in runs]
-    fig, axes = plt.subplots(3, 2, figsize=(11, 10))
+    panel = "#12161c"
+    fig, axes = plt.subplots(3, 2, figsize=(11, 10), facecolor=panel)
     axes = axes.flatten()
     for ax, (key, label, lo, hi, _) in zip(axes, METRICS):
+        ax.set_facecolor(panel)
         ys = [(r.get("angles") or {}).get(key) for r in runs]
         es = [(((r.get("stats") or {}).get(key) or {}).get("std")) for r in runs]
-        ax.axhspan(lo, hi, color="#2e7d32", alpha=0.25)
+        ax.axhspan(lo, hi, color="#37c837", alpha=0.18)
         xs = [i for i, y in enumerate(ys) if y is not None]
         yv = [y for y in ys if y is not None]
         ye = [es[i] if es[i] is not None else 0.0 for i in xs]
-        ax.plot(xs, yv, "-", color="#4da3ff", zorder=1)
+        ax.plot(xs, yv, "-", color="#5b9cff", zorder=1, linewidth=1.6)
         if any(e > 0 for e in ye):
-            ax.errorbar(xs, yv, yerr=ye, fmt="none", ecolor="#9fb3c8",
+            ax.errorbar(xs, yv, yerr=ye, fmt="none", ecolor="#7f93a8",
                         elinewidth=1, capsize=3, zorder=2)
         for i, y in zip(xs, yv):
             v = _verdict(y, lo, hi)
             c = {"ok": "#37c837", "near": "#ff8c00", "far": "#e53935"}.get(v, "#888")
-            ax.scatter([i], [y], color=c, s=45, zorder=3)
-        ax.set_title(f"{label}  (target {lo}-{hi})", fontsize=10)
+            ax.scatter([i], [y], color=c, s=45, zorder=3,
+                       edgecolors=panel, linewidths=1)
+        ax.set_title(f"{label}  (target {lo}-{hi})", fontsize=10, color="#dce6f0")
         ax.set_xticks(range(len(labels)))
-        ax.set_xticklabels(labels, rotation=40, ha="right", fontsize=7)
-        ax.grid(alpha=0.2)
+        ax.set_xticklabels(labels, rotation=40, ha="right", fontsize=7,
+                           color="#9fb0c2")
+        ax.tick_params(colors="#9fb0c2")
+        for sp in ax.spines.values():
+            sp.set_color("#2a2f35")
+        ax.grid(alpha=0.12, color="#9fb0c2")
     axes[-1].axis("off")
     fig.tight_layout()
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=110, facecolor="white")
+    fig.savefig(buf, format="png", dpi=110, facecolor=panel)
     plt.close(fig)
     return base64.b64encode(buf.getvalue()).decode()
 
@@ -720,7 +746,46 @@ _CELL_COLORS = {"ok": "#1e6b2e", "near": "#8a5a00", "far": "#7a1f1f",
                 "nodata": "#333"}
 
 
-def build_dashboard_html(runs, png_b64):
+def _run_file_links(run_dir):
+    """Build <a> links to a run's artifacts (video / screenshot / csv / txt),
+    relative to analysis.html (which sits one level up, in the captures root)."""
+    if not run_dir or not os.path.isdir(run_dir):
+        return "<span class=muted>&mdash;</span>"
+    try:
+        entries = sorted(os.listdir(run_dir))
+    except OSError:
+        return "<span class=muted>&mdash;</span>"
+    base = os.path.basename(run_dir.rstrip("/\\"))
+
+    def href(fname):
+        return urllib.parse.quote(base) + "/" + urllib.parse.quote(fname)
+
+    def pick(exts, prefer=None):
+        cands = [f for f in entries if f.lower().endswith(exts)]
+        if prefer:
+            for f in cands:
+                if prefer in f.lower():
+                    return [f]
+        return cands
+
+    links = []
+    vids = pick((".mp4", ".avi", ".mov"))
+    for i, v in enumerate(vids):
+        tag = f"video{i + 1}" if len(vids) > 1 else "video"
+        links.append(f"<a class=fl href='{href(v)}' target=_blank>&#9658; {tag}</a>")
+    shot = pick((".jpg", ".jpeg", ".png"), prefer="bottom") or pick((".jpg", ".jpeg", ".png"))
+    if shot:
+        links.append(f"<a class=fl href='{href(shot[0])}' target=_blank>&#128247; image</a>")
+    csvf = pick((".csv",))
+    if csvf:
+        links.append(f"<a class=fl href='{href(csvf[0])}' target=_blank>&#8623; csv</a>")
+    txtf = pick((".txt",), prefer="report") or pick((".txt",))
+    if txtf:
+        links.append(f"<a class=fl href='{href(txtf[0])}' target=_blank>&#9776; text</a>")
+    return "".join(links) or "<span class=muted>&mdash;</span>"
+
+
+def build_dashboard_html(runs, png_b64, bg_uri=None):
     cols = "".join(f"<th>{label}<br><span class=t>{lo}-{hi}</span></th>"
                    for _, label, lo, hi, _ in METRICS)
     rows = []
@@ -758,45 +823,104 @@ def build_dashboard_html(runs, png_b64):
         date = (r.get("datetime") or "")[:16].replace("T", " ")
         note = (r.get("note") or "").replace("<", "&lt;")
         n = r.get("n_strokes") or (st_all.get("knee_ext") or {}).get("n") or ""
+        files = _run_file_links(r.get("dir"))
         rows.append(f"<tr><td class=dt>{date}</td><td class=nm>{r.get('name','')}"
                     f"</td><td class=n>{n}</td>{''.join(cells)}"
-                    f"<td class=note>{note}</td></tr>")
+                    f"<td class=note>{note}</td><td class=files>{files}</td></tr>")
     img = (f"<img src='data:image/png;base64,{png_b64}'/>" if png_b64
-           else "<p>(matplotlib not available - charts skipped)</p>")
+           else "<p class=muted>(matplotlib not available - charts skipped)</p>")
+    bg = (f"linear-gradient(rgba(8,10,13,.86),rgba(8,10,13,.95)),url('{bg_uri}')"
+          if bg_uri else "#0d1014")
+    latest = (runs[-1].get("name") or "") if runs else "-"
     return f"""<!doctype html><html><head><meta charset=utf-8>
 <title>Bike Fit Analysis</title><style>
-body{{background:#0f1622;color:#e8edf4;font-family:Segoe UI,Arial,sans-serif;
-margin:0;padding:28px}}
-h1{{font-weight:600}} h2{{color:#9fb3c8;font-weight:500;margin-top:34px}}
-.sub{{color:#7f93a8;margin-top:-8px}}
-table{{border-collapse:collapse;width:100%;margin-top:14px;font-size:14px}}
-th,td{{padding:8px 10px;text-align:center;border:1px solid #223}}
-th{{background:#16202e;color:#cdd9e6;font-weight:600}}
-th .t{{color:#7f93a8;font-weight:400;font-size:11px}}
-td.dt{{color:#9fb3c8;white-space:nowrap}} td.nm{{text-align:left;font-weight:600}}
-td.n{{color:#9fb3c8}}
-td.note{{text-align:left;color:#cbd6e2;max-width:260px}}
+*{{box-sizing:border-box}}
+body{{margin:0;min-height:100vh;color:#e8edf4;
+ font-family:'Segoe UI',-apple-system,Arial,sans-serif;
+ background:{bg};background-size:cover;background-position:center;
+ background-attachment:fixed}}
+.wrap{{max-width:1080px;margin:0 auto;padding:40px 26px 60px}}
+.hero{{padding:6px 0 18px;border-bottom:1px solid rgba(255,255,255,.08);
+ margin-bottom:6px}}
+.hero h1{{margin:0;font-size:30px;font-weight:600;letter-spacing:.3px}}
+.hero .sub{{margin:8px 0 0;color:#aeb9c6;font-size:14px;max-width:780px;
+ line-height:1.55}}
+.meta{{display:flex;gap:10px;margin:16px 0 0;flex-wrap:wrap}}
+.chip{{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);
+ border-radius:999px;padding:5px 13px;font-size:12px;color:#cdd9e6}}
+.chip b{{color:#fff;font-weight:600}}
+.card{{background:rgba(20,24,30,.72);border:1px solid rgba(255,255,255,.07);
+ border-radius:14px;padding:18px 18px 20px;margin-top:22px}}
+.card h2{{margin:2px 0 4px;font-size:16px;font-weight:600;color:#dce6f0}}
+.card .note{{color:#8fa0b2;font-size:12.5px;margin:0 0 4px}}
+table{{border-collapse:collapse;width:100%;font-size:13.5px;margin-top:10px}}
+th,td{{padding:9px 10px;text-align:center}}
+th{{color:#9fb0c2;font-weight:600;font-size:12px;
+ border-bottom:1px solid rgba(255,255,255,.12)}}
+th .t{{color:#6f8093;font-weight:400;font-size:10.5px}}
+tbody tr{{border-bottom:1px solid rgba(255,255,255,.05)}}
+tbody tr:hover{{background:rgba(255,255,255,.03)}}
+td.dt{{color:#9fb0c2;white-space:nowrap;text-align:left}}
+td.nm{{text-align:left;font-weight:600}} td.n{{color:#9fb0c2}}
+td.note{{text-align:left;color:#c4d0dd;max-width:240px}}
+td.files{{text-align:left;white-space:nowrap}}
+a.fl{{display:inline-block;margin:2px 4px 2px 0;padding:3px 9px;font-size:11.5px;
+ color:#cdd9e6;text-decoration:none;background:rgba(255,255,255,.05);
+ border:1px solid rgba(255,255,255,.10);border-radius:7px}}
+a.fl:hover{{background:rgba(106,163,255,.18);border-color:rgba(106,163,255,.5);
+ color:#fff}}
 td .d{{font-size:11px;margin-top:2px}}
-td .sd{{font-size:10px;color:#9fb3c8;margin-top:1px}}
+td .sd{{font-size:10px;color:#9fb0c2;margin-top:1px}}
 td[title]{{cursor:help}}
-img{{max-width:100%;margin-top:16px;border-radius:8px}}
-.legend span{{display:inline-block;padding:2px 9px;border-radius:4px;margin-right:8px;
-font-size:12px}}
-</style></head><body>
-<h1>Bike Fit Analysis &mdash; {BIKE_NAME}</h1>
-<p class=sub>{len(runs)} runs &middot; each value is the <b>median across pedal strokes</b>
-(&plusmn; std below it); hover a cell for mean / median / sd / CV / n / range.
-Green band = in range. Deltas compare each run to the previous one
-(<span style='color:#5fd35f'>green</span> = toward target,
-<span style='color:#ff6b6b'>red</span> = away). Chart whiskers = &plusmn;1 SD.</p>
-<div class=legend><span style='background:#1e6b2e'>in range</span>
-<span style='background:#8a5a00'>slightly off</span>
-<span style='background:#7a1f1f'>well off</span></div>
-<h2>Runs</h2>
-<table><tr><th>Date</th><th>Run</th><th>Strokes<br><span class=t>n</span></th>
-{cols}<th>Notes</th></tr>{''.join(rows)}</table>
-<h2>Trends across runs</h2>{img}
-</body></html>"""
+img{{max-width:100%;border-radius:10px;margin-top:6px}}
+.muted{{color:#8fa0b2}}
+.legend{{margin-top:12px}}
+.legend span{{display:inline-block;padding:3px 11px;border-radius:6px;
+ margin-right:8px;font-size:12px}}
+</style></head><body><div class=wrap>
+<div class=hero>
+ <h1>Bike Fit Analysis</h1>
+ <p class=sub>{BIKE_NAME} &middot; side-on, bottom of pedal stroke. Each value is
+ the <b>median across pedal strokes</b> (&plusmn;1 SD shown below it); hover any
+ cell for mean / median / SD / CV / n / range.</p>
+ <div class=meta>
+  <span class=chip><b>{len(runs)}</b> runs</span>
+  <span class=chip>latest: <b>{latest}</b></span>
+  <span class=chip>green = in range</span>
+  <span class=chip>&#9650;&#9660; = vs previous run</span>
+ </div>
+</div>
+<div class=card>
+ <h2>Runs</h2>
+ <p class=note>Cell colour = value vs target; delta colour:
+  <span style='color:#5fd35f'>green</span> moved toward target,
+  <span style='color:#ff6b6b'>red</span> away.</p>
+ <table><tr><th>Date</th><th>Run</th><th>Strokes<br><span class=t>n</span></th>
+ {cols}<th>Notes</th><th>Files</th></tr>{''.join(rows)}</table>
+ <div class=legend><span style='background:#1e6b2e'>in range</span>
+  <span style='background:#8a5a00'>slightly off</span>
+  <span style='background:#7a1f1f'>well off</span></div>
+</div>
+<div class=card>
+ <h2>Trends across runs</h2>
+ <p class=note>Shaded band = target range &middot; whiskers = &plusmn;1 SD.</p>
+ {img}
+</div>
+</div></body></html>"""
+
+
+def _dashboard_bg_uri():
+    """Embed a background photo (assets/dashboard_bg.* or gui_bg.jpg) as a
+    data URI so analysis.html is self-contained. Returns None if none found."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    for name in ("dashboard_bg.jpg", "dashboard_bg.png", "gui_bg.jpg"):
+        path = os.path.join(here, "assets", name)
+        if os.path.isfile(path):
+            mime = "image/png" if name.endswith(".png") else "image/jpeg"
+            with open(path, "rb") as f:
+                data = base64.b64encode(f.read()).decode()
+            return f"data:{mime};base64,{data}"
+    return None
 
 
 def run_analysis(outdir):
@@ -805,7 +929,7 @@ def run_analysis(outdir):
         print(f"No runs found in {os.path.abspath(outdir)}. Record some first.")
         return
     png = make_trend_png(runs)
-    html = build_dashboard_html(runs, png)
+    html = build_dashboard_html(runs, png, _dashboard_bg_uri())
     out = os.path.join(outdir, "analysis.html")
     with open(out, "w", encoding="utf-8") as f:
         f.write(html)
@@ -912,6 +1036,7 @@ def main():
     # Display sizing: scale video down to a sane width, panel to the right.
     disp_w = 900
     disp_h = int(disp_w * ah / aw)
+    disp_h -= disp_h % 2          # H.264 requires even dimensions
     panel_w = 500
 
     metric_keys = [k for k, *_ in METRICS]
@@ -950,8 +1075,7 @@ def main():
         if save:
             n_clips += 1
             clip_path = os.path.join(run_dir, f"clip{n_clips}.mp4")
-            writer = cv2.VideoWriter(clip_path, cv2.VideoWriter_fourcc(*"mp4v"),
-                                     30.0, (clip_w, clip_h))
+            writer = open_video_writer(clip_path, 30.0, (clip_w, clip_h))
             print(f"Recording STARTED -> {clip_path}")
         else:
             print("Recording STARTED - pedal steadily.")

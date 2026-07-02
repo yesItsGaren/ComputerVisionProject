@@ -1,0 +1,6 @@
+measurement,median_deg,mean_deg,std_deg,cv_pct,min_deg,max_deg,n_strokes,target_lo,target_hi,verdict
+Knee Extension,19.7,21.0,7.53,35.9,8.5,32.2,13,32,38,LOW
+Hip Open,163.0,164.6,8.85,5.4,147.9,179.0,13,96,104,HIGH
+Back Angle,84.4,84.2,3.03,3.6,79.4,88.6,13,37,43,HIGH
+Shoulder Angle,28.7,34.5,29.67,86.0,3.6,128.1,13,86,93,LOW
+Arm Angle,142.9,108.0,63.11,58.4,7.7,164.7,13,145,175,LOW

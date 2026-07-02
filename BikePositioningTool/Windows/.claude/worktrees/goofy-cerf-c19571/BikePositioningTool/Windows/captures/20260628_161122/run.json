@@ -1,0 +1,85 @@
+{
+  "session": "20260628_161122",
+  "datetime": "2026-06-28T16:12:15",
+  "name": "20260628_161122",
+  "note": "",
+  "side": "right",
+  "bike": "Canyon Ultimate CF",
+  "n_strokes": 1,
+  "angles": {
+    "knee_ext": 0.5,
+    "hip_open": 176.9,
+    "back": 86.1,
+    "shoulder": 26.9,
+    "arm": 124.9
+  },
+  "stats": {
+    "knee_ext": {
+      "n": 1,
+      "mean": 0.5,
+      "median": 0.5,
+      "std": 0.0,
+      "min": 0.5,
+      "max": 0.5,
+      "cv": 0.0
+    },
+    "hip_open": {
+      "n": 1,
+      "mean": 176.9,
+      "median": 176.9,
+      "std": 0.0,
+      "min": 176.9,
+      "max": 176.9,
+      "cv": 0.0
+    },
+    "back": {
+      "n": 1,
+      "mean": 86.1,
+      "median": 86.1,
+      "std": 0.0,
+      "min": 86.1,
+      "max": 86.1,
+      "cv": 0.0
+    },
+    "shoulder": {
+      "n": 1,
+      "mean": 26.9,
+      "median": 26.9,
+      "std": 0.0,
+      "min": 26.9,
+      "max": 26.9,
+      "cv": 0.0
+    },
+    "arm": {
+      "n": 1,
+      "mean": 124.9,
+      "median": 124.9,
+      "std": 0.0,
+      "min": 124.9,
+      "max": 124.9,
+      "cv": 0.0
+    }
+  },
+  "targets": {
+    "knee_ext": [
+      32,
+      38
+    ],
+    "hip_open": [
+      96,
+      104
+    ],
+    "back": [
+      37,
+      43
+    ],
+    "shoulder": [
+      86,
+      93
+    ],
+    "arm": [
+      145,
+      175
+    ]
+  }
+}
